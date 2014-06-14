@@ -5,9 +5,125 @@ import (
   "os"
   "io/ioutil"
   "regexp"
+  "strconv"
   )
 
 var Tokens = make([]Token, 0)
+
+
+type Token struct {
+  tokentype string
+  value string
+}
+
+type Definition struct {
+  name string
+  value interface{}
+}
+
+type Variable struct {
+  name string
+}
+
+type Number struct {
+  value int
+}
+
+type BinaryExpression struct {
+  typetag string
+  lhand interface{}
+  rhand interface{}
+}
+
+func program() []interface{} {
+  v := make([]interface{}, 0)
+  for len(Tokens) != 0 {
+    v = append(v, statement())
+  }
+  return v
+}
+
+func statement() interface{} {
+  if Tokens[0].tokentype == "let" {
+    return definition()
+  } else {
+    return expression()
+  }
+}
+
+func definition() *Definition {
+  Tokens = Tokens[1:]
+  if Tokens[0].tokentype != "identifier" {
+    panic("no variable name after let")
+  }
+  vari := variable()
+  if Tokens[0].tokentype != "equal" {
+    panic("no equal sign after variable definition")
+  }
+  Tokens = Tokens[1:]
+  expr := expression()
+
+  return &Definition{ vari.name, expr }
+
+}
+
+func expression() interface{} {
+  the_expr := term()
+  if op := Tokens[0].tokentype; op != "addition" && op != "subtraction" {
+    return the_expr
+  }
+  for Tokens[0].tokentype == "addition" || Tokens[0].tokentype == "subtraction" {
+    op := Tokens[0].tokentype;
+    Tokens = Tokens[1:]
+    the_expr = BinaryExpression{ op, the_expr, term() }
+  }
+  return the_expr
+}
+
+func term() interface{} {
+  the_term := factor()
+  if op := Tokens[0].tokentype; op != "multiplication" && op != "division" {
+    return the_term
+  }
+  for Tokens[0].tokentype == "multiplication" || Tokens[0].tokentype == "division" {
+    op := Tokens[0].tokentype;
+    Tokens = Tokens[1:]
+    the_term = BinaryExpression{ op, the_term, factor() }
+  }
+  return the_term
+}
+
+func factor() interface{} {
+  if Tokens[0].tokentype == "lparen" {
+    Tokens = Tokens[1:]
+    expr := expression()
+    if Tokens[0].tokentype == "rparen" {
+      Tokens = Tokens[1:]
+    } else {
+      panic("unmatched parentheses!")
+    }
+    return expr
+  } else if Tokens[0].tokentype == "identifier" {
+    return variable()
+  } else if Tokens[0].tokentype == "number" {
+    return number()
+  } else {
+    panic("couldn't parse factor")
+  }
+}
+
+func number() *Number {
+  num1, _ := strconv.Atoi(Tokens[0].value)
+  num := &Number{ num1 }
+  Tokens = Tokens[1:]
+  return num
+}
+
+func variable() *Variable {
+  vari := &Variable{ Tokens[0].value }
+  Tokens = Tokens[1:]
+  return vari
+}
 
 func readFile(filename string) string {
   f, err := ioutil.ReadFile(filename)
@@ -15,11 +131,6 @@ func readFile(filename string) string {
     panic(err)
   }
   return string(f)
-}
-
-type Token struct {
-  tokentype string
-  value string
 }
 
 func munch(src string) string {
@@ -85,4 +196,6 @@ func main() {
   contents := readFile(os.Args[1])
   munch(contents)
   printTokens()
+  prog := program()
+  fmt.Printf("%#v", prog)
 }
