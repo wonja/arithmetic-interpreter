@@ -38,6 +38,9 @@ type BinaryExpression struct {
 func program() []interface{} {
   v := make([]interface{}, 0)
   for len(Tokens) != 0 {
+    if(Tokens[0].tokentype == "EOF") {
+      break
+    }
     v = append(v, statement())
   }
   return v
@@ -175,6 +178,7 @@ func munch(src string) string {
       panic("did not recognize token: "+src)
     }
   }
+  src = munchToken(nil, "EOF", src)
   return src;
 }
 
