@@ -9,7 +9,7 @@ import (
   )
 
 var Tokens = make([]Token, 0)
-
+var env = make(map[string]*Number)
 
 type Token struct {
   tokentype string
@@ -26,7 +26,7 @@ type Variable struct {
 }
 
 type Number struct {
-  value int
+  value float64
 }
 
 type BinaryExpression struct {
@@ -35,10 +35,50 @@ type BinaryExpression struct {
   rhand interface{}
 }
 
+func eval(node interface{}) *Number {
+  switch node := node.(type) {
+    case *Definition:
+      val := eval(node.value)
+      env[node.name] = val
+      return val
+    case *Variable:
+      value, was_there := env[node.name]
+      if was_there {
+        return value
+      } else {
+        panic("variable not defined: "+node.name)
+      }
+    case *Number:
+      return node
+    case *BinaryExpression:
+      op := node.typetag
+      lhs := eval(node.lhand)
+      rhs := eval(node.rhand)
+      switch op {
+        case "addition":
+          return &Number{ lhs.value + rhs.value }
+        case "subtraction":
+          return &Number{ lhs.value - rhs.value }
+        case "multiplication":
+          return &Number{ lhs.value * rhs.value }
+        case "division":
+          if rhs.value != 0 {
+            return &Number{ lhs.value / rhs.value }                      
+          } else {
+            panic("cannot divide by zero")
+          }
+        default:
+          panic("unrecognized operation")                   
+      }
+    default:
+      panic("unrecognized expression")
+  }
+}
+
 func program() []interface{} {
   v := make([]interface{}, 0)
   for len(Tokens) != 0 {
-    if(Tokens[0].tokentype == "EOF") {
+    if Tokens[0].tokentype == "EOF" {
       break
     }
     v = append(v, statement())
@@ -78,7 +118,7 @@ func expression() interface{} {
   for Tokens[0].tokentype == "addition" || Tokens[0].tokentype == "subtraction" {
     op := Tokens[0].tokentype;
     Tokens = Tokens[1:]
-    the_expr = BinaryExpression{ op, the_expr, term() }
+    the_expr = &BinaryExpression{ op, the_expr, term() }
   }
   return the_expr
 }
@@ -91,7 +131,7 @@ func term() interface{} {
   for Tokens[0].tokentype == "multiplication" || Tokens[0].tokentype == "division" {
     op := Tokens[0].tokentype;
     Tokens = Tokens[1:]
-    the_term = BinaryExpression{ op, the_term, factor() }
+    the_term = &BinaryExpression{ op, the_term, factor() }
   }
   return the_term
 }
@@ -116,7 +156,7 @@ func factor() interface{} {
 }
 
 func number() *Number {
-  num1, _ := strconv.Atoi(Tokens[0].value)
+  num1, _ := strconv.ParseFloat(Tokens[0].value, 64)
   num := &Number{ num1 }
   Tokens = Tokens[1:]
   return num
@@ -138,7 +178,7 @@ func readFile(filename string) string {
 
 func munch(src string) string {
 
-  numberPattern, _ := regexp.Compile(`\A\d`)
+  numberPattern, _ := regexp.Compile(`\A\d*\.?\d+`)
   additionPattern, _ := regexp.Compile(`\A\+`)
   subtractionPattern, _ := regexp.Compile(`\A\-`)
   multiplicationPattern, _ := regexp.Compile(`\A\*`)
@@ -149,6 +189,8 @@ func munch(src string) string {
   identifierPattern, _ := regexp.Compile(`\A[a-zA-Z]+`)
   letPattern, _ := regexp.Compile(`\Alet`)
   equalPattern, _ := regexp.Compile(`\A\=`)
+
+  // linenum := 0
 
   for len(src) != 0 {
     if c := numberPattern.Find([]byte(src)); c != nil {
@@ -199,7 +241,12 @@ func printTokens() {
 func main() {
   contents := readFile(os.Args[1])
   munch(contents)
-  printTokens()
+  // printTokens()
   prog := program()
-  fmt.Printf("%#v", prog)
+  // fmt.Printf("%#v\n", prog)
+  var result *Number
+  for _, expr := range prog {
+    result = eval(expr)
+  }
+  fmt.Println(result.value)
 }
