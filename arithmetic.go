@@ -14,6 +14,7 @@ var env = make(map[string]*Number)
 type Token struct {
   tokentype string
   value string
+  linenum int
 }
 
 type Definition struct {
@@ -65,13 +66,13 @@ func eval(node interface{}) *Number {
           if rhs.value != 0 {
             return &Number{ lhs.value / rhs.value }                      
           } else {
-            panic("cannot divide by zero")
+            panic("cannot divide by zero.")
           }
         default:
-          panic("unrecognized operation")                   
+          panic("unrecognized operation.")                   
       }
     default:
-      panic("unrecognized expression")
+      panic("unrecognized expression.")
   }
 }
 
@@ -97,11 +98,11 @@ func statement() interface{} {
 func definition() *Definition {
   Tokens = Tokens[1:]
   if Tokens[0].tokentype != "identifier" {
-    panic("no variable name after let")
+    panic("no variable name after let. line number: "+strconv.Itoa(Tokens[0].linenum))
   }
   vari := variable()
   if Tokens[0].tokentype != "equal" {
-    panic("no equal sign after variable definition")
+    panic("no equal sign after variable definition. line number: "+strconv.Itoa(Tokens[0].linenum))
   }
   Tokens = Tokens[1:]
   expr := expression()
@@ -138,12 +139,13 @@ func term() interface{} {
 
 func factor() interface{} {
   if Tokens[0].tokentype == "lparen" {
+    openingparenline := Tokens[0].linenum
     Tokens = Tokens[1:]
     expr := expression()
     if Tokens[0].tokentype == "rparen" {
       Tokens = Tokens[1:]
     } else {
-      panic("unmatched parentheses!")
+      panic("unmatched parentheses. line number: "+strconv.Itoa(openingparenline))
     }
     return expr
   } else if Tokens[0].tokentype == "identifier" {
@@ -151,7 +153,7 @@ func factor() interface{} {
   } else if Tokens[0].tokentype == "number" {
     return number()
   } else {
-    panic("couldn't parse factor")
+    panic("couldn't parse factor. line number: "+strconv.Itoa(Tokens[0].linenum))
   }
 }
 
@@ -190,43 +192,44 @@ func munch(src string) string {
   letPattern, _ := regexp.Compile(`\Alet`)
   equalPattern, _ := regexp.Compile(`\A\=`)
 
-  // linenum := 0
+  linenum := 1
 
   for len(src) != 0 {
     if c := numberPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "number", src)
+      src = munchToken(c, "number", src, linenum)
     } else if c := additionPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "addition", src)
+      src = munchToken(c, "addition", src, linenum)
     } else if c := subtractionPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "subtraction", src)
+      src = munchToken(c, "subtraction", src, linenum)
     } else if c := multiplicationPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "multiplication", src)
+      src = munchToken(c, "multiplication", src, linenum)
     } else if c := divisionPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "division", src)
+      src = munchToken(c, "division", src, linenum)
     } else if c := lparenPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "lparen", src)
+      src = munchToken(c, "lparen", src, linenum)
     } else if c := rparenPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "rparen", src)
+      src = munchToken(c, "rparen", src, linenum)
     } else if c := whitespacePattern.Find([]byte(src)); c != nil {
+      if c[0] == 10 { linenum++ }
       src = src[len(c):]
     } else if c := letPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "let", src)
+      src = munchToken(c, "let", src, linenum)
     } else if c := identifierPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "identifier", src)
+      src = munchToken(c, "identifier", src, linenum)
     } else if c := equalPattern.Find([]byte(src)); c != nil {
-      src = munchToken(c, "equal", src)
+      src = munchToken(c, "equal", src, linenum)
     } else {
       //exit
-      panic("did not recognize token: "+src)
+      panic("did not recognize token: "+src[0:1]+ " on line number "+strconv.Itoa(linenum))
     }
   }
-  src = munchToken(nil, "EOF", src)
+  src = munchToken(nil, "EOF", src, linenum)
   return src;
 }
 
 
-func munchToken(c []byte, ttype string, source string) string {
-  t := Token{ ttype, string(c) }
+func munchToken(c []byte, ttype string, source string, line int) string {
+  t := Token{ ttype, string(c), line }
   source = source[len(c):]
   Tokens = append(Tokens, t)
   return source
