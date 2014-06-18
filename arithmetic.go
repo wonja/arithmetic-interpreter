@@ -9,7 +9,7 @@ import (
   )
 
 var Tokens = make([]Token, 0)
-var env = make(map[string]*Number)
+var env = make(map[string]interface{})
 
 type Token struct {
   tokentype string
@@ -20,6 +20,17 @@ type Token struct {
 type Definition struct {
   name string
   value interface{}
+}
+
+type Func_Def struct {
+  name string
+  params []string
+  body interface{}
+}
+
+type Func_Call struct {
+  name string
+  args []interface{}
 }
 
 type Variable struct {
@@ -45,7 +56,8 @@ func eval(node interface{}) *Number {
     case *Variable:
       value, was_there := env[node.name]
       if was_there {
-        return value
+        // could check this by type casting and making sure it works first
+        return value.(*Number)
       } else {
         panic("variable not defined: "+node.name)
       }
@@ -71,10 +83,24 @@ func eval(node interface{}) *Number {
         default:
           panic("unrecognized operation.")                   
       }
+    case *Func_Def:
+      env[node.name] = node
+      //could change this to make eval return an interface & check return types 
+      return &Number{ 0 }
+    case *Func_Call:
+      return &Number{ 42 }
     default:
       panic("unrecognized expression.")
   }
 }
+
+// todo
+// more complex env environment (slice of maps)
+// eval needs to take in the env
+// then a lookup function searches through the environments in the correct order and returns the first thing
+// in the function call clause, need to create a new environment mapping the args to the params and pass that into eval with the function body
+// then pop the new env off the the environments slice
+// in the function call clause, can just pass in the result of append to eval so it doesn't modify the current env
 
 func program() []interface{} {
   v := make([]interface{}, 0)
@@ -97,6 +123,8 @@ func statement() interface{} {
   } else if Tokens[0].tokentype == "semicolon" {
     Tokens = Tokens[1:]
     return nil
+  } else if Tokens[0].tokentype == "func" {
+    the_statement = function_def()
   } else {
     the_statement = expression()
   }
@@ -122,6 +150,51 @@ func definition() *Definition {
 
   return &Definition{ vari.name, expr }
 
+}
+
+func function_def() *Func_Def {
+  Tokens = Tokens[1:]
+  if Tokens[0].tokentype != "identifier" {
+    panic("no variable name after let. line number: "+strconv.Itoa(Tokens[0].linenum))
+  }
+  funcname := variable().name
+  if Tokens[0].tokentype != "lparen" {
+    panic("no parenthesis after function name")
+  }
+  Tokens = Tokens[1:]
+  the_params := params()
+  if Tokens[0].tokentype != "rparen" {
+    panic("couldn't parse param list, needed right parens")
+  }
+  Tokens = Tokens[1:]
+  if Tokens[0].tokentype != "equal" {
+    panic("no equal sign after function param list")
+  }
+  Tokens = Tokens[1:]
+  body := expression()
+
+  return &Func_Def{ funcname, the_params, body }
+}
+
+func params() []string {
+  vars := make([]string, 0)
+  if Tokens[0].tokentype == "rparen" {
+    return vars
+  }
+  if Tokens[0].tokentype == "identifier" {
+    vars = append(vars, variable().name)
+  } else {
+    panic("expecting parameter name")
+  }
+  for Tokens[0].tokentype == "comma" {
+    Tokens = Tokens[1:]
+    if Tokens[0].tokentype == "identifier" {
+      vars = append(vars, variable().name)
+    } else {
+      panic("expecting parameter name")
+    }
+  }
+  return vars
 }
 
 func expression() interface{} {
@@ -162,12 +235,40 @@ func factor() interface{} {
     }
     return expr
   } else if Tokens[0].tokentype == "identifier" {
-    return variable()
+    if Tokens[1].tokentype == "lparen" {
+      return function_call()
+    } else {
+      return variable()
+    }
   } else if Tokens[0].tokentype == "number" {
     return number()
   } else {
     panic("couldn't parse factor. line number: "+strconv.Itoa(Tokens[0].linenum))
   }
+}
+
+func function_call() *Func_Call {
+  funcname := variable().name
+  Tokens = Tokens[1:]
+  funcargs := args()
+  if Tokens[0].tokentype != "rparen" {
+    panic("couldn't parse argument list, needed right parens")
+  }
+  Tokens = Tokens[1:]
+  return &Func_Call{ funcname, funcargs }
+}
+
+func args() []interface{} {
+  the_args := make([]interface{}, 0)
+  if Tokens[0].tokentype == "rparen" {
+    return the_args
+  }
+  the_args = append(the_args, expression())
+  for Tokens[0].tokentype == "comma" {
+    Tokens = Tokens[1:]
+    the_args = append(the_args, expression())
+  }
+  return the_args
 }
 
 func number() *Number {
@@ -205,6 +306,8 @@ func munch(src string) string {
   letPattern, _ := regexp.Compile(`\Alet`)
   equalPattern, _ := regexp.Compile(`\A\=`)
   semicolonPattern, _ := regexp.Compile(`\A;`)
+  funcPattern, _ := regexp.Compile(`\Afunc`)
+  commaPattern, _ := regexp.Compile(`\A,`)
 
   linenum := 1
 
@@ -228,12 +331,16 @@ func munch(src string) string {
       src = src[len(c):]
     } else if c := letPattern.Find([]byte(src)); c != nil {
       src = munchToken(c, "let", src, linenum)
+    } else if c := funcPattern.Find([]byte(src)); c != nil {
+      src = munchToken(c, "func", src, linenum)
     } else if c := identifierPattern.Find([]byte(src)); c != nil {
       src = munchToken(c, "identifier", src, linenum)
     } else if c := equalPattern.Find([]byte(src)); c != nil {
       src = munchToken(c, "equal", src, linenum)
     } else if c := semicolonPattern.Find([]byte(src)); c != nil {
       src = munchToken(c, "semicolon", src, linenum)
+    } else if c := commaPattern.Find([]byte(src)); c != nil {
+      src = munchToken(c, "comma", src, linenum)
     } else {
       //exit
       panic("did not recognize token: "+src[0:1]+ " on line number "+strconv.Itoa(linenum))
