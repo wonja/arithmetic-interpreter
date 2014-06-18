@@ -9,7 +9,7 @@ import (
   )
 
 var Tokens = make([]Token, 0)
-var env = make(map[string]interface{})
+var envs = make([]map[string]interface{}, 1)
 
 type Token struct {
   tokentype string
@@ -47,26 +47,21 @@ type BinaryExpression struct {
   rhand interface{}
 }
 
-func eval(node interface{}) *Number {
+func eval(node interface{}, currenv map[string]interface{}) interface{} {
   switch node := node.(type) {
     case *Definition:
-      val := eval(node.value)
-      env[node.name] = val
+      val := eval(node.value, currenv)
+      currenv[node.name] = val
       return val
     case *Variable:
-      value, was_there := env[node.name]
-      if was_there {
-        // could check this by type casting and making sure it works first
-        return value.(*Number)
-      } else {
-        panic("variable not defined: "+node.name)
-      }
+      val := lookup(node.name)
+      return val.(*Number)
     case *Number:
       return node
     case *BinaryExpression:
       op := node.typetag
-      lhs := eval(node.lhand)
-      rhs := eval(node.rhand)
+      lhs := eval(node.lhand, currenv).(*Number)
+      rhs := eval(node.rhand, currenv).(*Number)
       switch op {
         case "addition":
           return &Number{ lhs.value + rhs.value }
@@ -84,14 +79,54 @@ func eval(node interface{}) *Number {
           panic("unrecognized operation.")                   
       }
     case *Func_Def:
-      env[node.name] = node
+      currenv[node.name] = node
       //could change this to make eval return an interface & check return types 
       return &Number{ 0 }
     case *Func_Call:
-      return &Number{ 42 }
+      funcdef := lookup(node.name).(*Func_Def)
+      newenv := make(map[string]interface{})
+      if len(funcdef.params) != len(node.args) {
+        panic("wrong nubmer of arguments for function "+node.name)
+      }
+      for i, elem := range node.args {
+        tmp := eval(elem, currenv).(*Number)
+        newenv[funcdef.params[i]] = tmp
+      }
+      tmpenvs := make([]map[string]interface{}, 1)
+      tmpenvs[0] = newenv
+      for _, elem := range envs {
+        tmpenvs = append(tmpenvs, elem)
+      }
+      oldenvs := envs
+      envs = tmpenvs
+      retval := eval(funcdef.body, envs[0]).(*Number)
+      envs = oldenvs
+      return retval
     default:
       panic("unrecognized expression.")
   }
+}
+
+func lookup(name string) interface{} {
+  var value interface{}
+  if len(envs) == 1 {
+    value, was_there := envs[0][name]
+    if was_there {
+      return value
+    } else {
+      panic("variable not defined: "+name)
+    }
+  } else if len(envs) > 1 {
+    for _, elem := range envs {
+      value, was_there := elem[name]
+      if was_there {
+        return value
+      }
+    }
+  } else {
+    panic("variable not defined: "+name)
+  }
+  return value
 }
 
 // todo
@@ -370,9 +405,11 @@ func main() {
   // printTokens()
   prog := program()
   // fmt.Printf("%#v\n", prog)
-  var result *Number
+  var result interface{}
+  // env := make([]map[string]interface{}, 1)
+  envs[0] = make(map[string]interface{})
   for _, expr := range prog {
-    result = eval(expr)
+    result = eval(expr, envs[0])
   }
-  fmt.Println(result.value)
+  fmt.Println(result)
 }
