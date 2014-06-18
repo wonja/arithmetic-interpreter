@@ -82,16 +82,29 @@ func program() []interface{} {
     if Tokens[0].tokentype == "EOF" {
       break
     }
-    v = append(v, statement())
+    if the_statement := statement(); the_statement != nil {
+      v = append(v, the_statement)
+    }
   }
   return v
 }
 
 func statement() interface{} {
+  statementline := Tokens[0].linenum
+  var the_statement interface{}
   if Tokens[0].tokentype == "let" {
-    return definition()
+    the_statement = definition()
+  } else if Tokens[0].tokentype == "semicolon" {
+    Tokens = Tokens[1:]
+    return nil
   } else {
-    return expression()
+    the_statement = expression()
+  }
+  if Tokens[0].tokentype != "semicolon" {
+    panic("expected semicolon at the end of a statement. line number: "+strconv.Itoa(statementline))
+  } else {
+    Tokens = Tokens[1:]
+    return the_statement
   }
 }
 
@@ -191,6 +204,7 @@ func munch(src string) string {
   identifierPattern, _ := regexp.Compile(`\A[a-zA-Z]+`)
   letPattern, _ := regexp.Compile(`\Alet`)
   equalPattern, _ := regexp.Compile(`\A\=`)
+  semicolonPattern, _ := regexp.Compile(`\A;`)
 
   linenum := 1
 
@@ -218,6 +232,8 @@ func munch(src string) string {
       src = munchToken(c, "identifier", src, linenum)
     } else if c := equalPattern.Find([]byte(src)); c != nil {
       src = munchToken(c, "equal", src, linenum)
+    } else if c := semicolonPattern.Find([]byte(src)); c != nil {
+      src = munchToken(c, "semicolon", src, linenum)
     } else {
       //exit
       panic("did not recognize token: "+src[0:1]+ " on line number "+strconv.Itoa(linenum))
